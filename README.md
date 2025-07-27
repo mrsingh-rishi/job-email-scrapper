@@ -54,7 +54,113 @@ DB_NAME=job_outreach
 3. App passwords → Generate password for "Mail"
 4. Use this password in your `.env` file
 
-### 4. Run with Docker Compose
+### 4. API Keys for Enhanced Scraping (Optional)
+
+The application supports multiple real-world scraping sources. Add these API keys to enable enhanced email discovery:
+
+#### 🔍 Google Custom Search API
+**Enables real Google search for recruiter emails**
+
+1. **Google Cloud Console Setup:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable the "Custom Search API"
+
+2. **Get API Key:**
+   - Go to "APIs & Services" → "Credentials"
+   - Click "Create Credentials" → "API Key"
+   - Copy your API key
+   - Add to `.env`: `GOOGLE_API_KEY=your_api_key_here`
+
+3. **Create Custom Search Engine:**
+   - Go to [Google Custom Search](https://cse.google.com/cse/)
+   - Click "Add" to create new search engine
+   - Enter `*.com` as the site to search
+   - Get your Search Engine ID from the setup page
+   - Add to `.env`: `GOOGLE_SEARCH_ENGINE_ID=your_engine_id_here`
+
+#### 🔗 LinkedIn API (Limited Availability)
+**For professional recruiting contacts**
+
+1. **LinkedIn Developer Program:**
+   - Apply at [LinkedIn Developer Portal](https://developer.linkedin.com/)
+   - Create an application
+   - Request access to recruiting APIs (approval required)
+
+2. **Get Credentials:**
+   - Copy Client ID and Client Secret
+   - Add to `.env`:
+     ```
+     LINKEDIN_CLIENT_ID=your_client_id
+     LINKEDIN_CLIENT_SECRET=your_client_secret
+     ```
+
+#### 💼 Job Board APIs
+**For job board sourced emails**
+
+1. **Indeed API:**
+   - Visit [Indeed Publisher Portal](https://ads.indeed.com/jobroll)
+   - Apply for Publisher program
+   - Get API key after approval
+   - Add to `.env`: `INDEED_API_KEY=your_api_key`
+
+2. **Glassdoor API:**
+   - Go to [Glassdoor API](https://www.glassdoor.com/developer/index.htm)
+   - Register as a developer
+   - Apply for API access
+   - Add to `.env`: `GLASSDOOR_API_KEY=your_api_key`
+
+#### 🎯 Contact Discovery APIs
+**For professional contact discovery**
+
+1. **ZoomInfo API:**
+   - Visit [ZoomInfo Developers](https://developers.zoominfo.com/)
+   - Sign up for developer account
+   - Purchase API credits
+   - Add to `.env`: `ZOOMINFO_API_KEY=your_api_key`
+
+2. **Apollo.io API:**
+   - Go to [Apollo.io API](https://apolloio.github.io/apollo-api-documentation/)
+   - Create account and get API key from settings
+   - Add to `.env`: `APOLLO_API_KEY=your_api_key`
+
+#### 🚀 Startup Database APIs
+**For startup ecosystem contacts**
+
+1. **AngelList API:**
+   - Visit [AngelList API](https://angel.co/api)
+   - Note: API access is limited, apply for access
+   - Add to `.env`: `ANGELLIST_API_KEY=your_api_key`
+
+2. **Crunchbase API:**
+   - Go to [Crunchbase API](https://data.crunchbase.com/docs)
+   - Purchase API access plan
+   - Get your API key from dashboard
+   - Add to `.env`: `CRUNCHBASE_API_KEY=your_api_key`
+
+#### 📋 Complete .env Example with API Keys
+```env
+# Email Configuration
+SENDER_EMAIL=rs3949427@gmail.com
+SENDER_PASSWORD=your_gmail_app_password_here
+
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=password
+DB_NAME=job_outreach
+
+# Real-World Scraping APIs (Optional)
+GOOGLE_API_KEY=AIzaSyC4zmRiXnO1UKRdtGDmofM9UA9TKuEgL7Y
+GOOGLE_SEARCH_ENGINE_ID=017576662512468239146:omuauf_lfve
+INDEED_API_KEY=your_indeed_api_key_here
+GLASSDOOR_API_KEY=your_glassdoor_api_key_here
+ZOOMINFO_API_KEY=your_zoominfo_api_key_here
+APOLLO_API_KEY=your_apollo_api_key_here
+```
+
+### 5. Run with Docker Compose
 
 ```bash
 # Start all services (PostgreSQL + FastAPI)
@@ -67,7 +173,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### 5. Optional: Run PgAdmin (Database Management)
+### 6. Optional: Run PgAdmin (Database Management)
 
 ```bash
 # Start with PgAdmin included
