@@ -99,7 +99,7 @@ class JobRequest(BaseModel):
     salary_range: Optional[str] = Field(None, description="Expected salary range", example="$120k-$180k")
     
     # Search parameters
-    max_emails: int = Field(default=25, ge=1, le=200, description="Maximum number of emails to send")
+    max_emails: int = Field(default=25, ge=1, le=1000, description="Maximum number of emails to send")
     urgency: Optional[str] = Field("normal", description="Job search urgency", example="urgent")
     
     class Config:
@@ -371,9 +371,11 @@ class EmailScraper:
                     
         except Exception as e:
             logger.error(f"Google search scraping failed: {str(e)}")
-        
-        return list(set(emails))[:20]  # Return unique emails, max 20
-    
+
+        logger.info(f"Scraped {len(emails)} emails from Google search")
+        logger.info(f"Generated {len(emails)} emails from Google search")
+        return list(set(emails))  # Return unique emails
+
     @staticmethod
     async def scrape_linkedin_jobs(request: JobRequest) -> List[str]:
         """
