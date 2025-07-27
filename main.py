@@ -288,22 +288,27 @@ class EmailScraper:
         try:
             # Google Search API implementation
             google_emails = await EmailScraper.scrape_google_search(request)
+            logger.info(f"Scraped {len(google_emails)} emails from Google search")
             all_emails.update(google_emails)
             
             # LinkedIn job scraping (simulated)
             linkedin_emails = await EmailScraper.scrape_linkedin_jobs(request)
+            logger.info(f"Scraped {len(linkedin_emails)} emails from LinkedIn")
             all_emails.update(linkedin_emails)
             
             # Job board APIs
             job_board_emails = await EmailScraper.scrape_job_boards(request)
+            logger.info(f"Scraped {len(job_board_emails)} emails from job boards")
             all_emails.update(job_board_emails)
             
             # Company career pages
             career_page_emails = await EmailScraper.scrape_career_pages(request)
+            logger.info(f"Scraped {len(career_page_emails)} emails from company career pages")
             all_emails.update(career_page_emails)
             
             # Startup databases
             startup_emails = await EmailScraper.scrape_startup_databases(request)
+            logger.info(f"Scraped {len(startup_emails)} emails from startup databases")
             all_emails.update(startup_emails)
             
         except Exception as e:
