@@ -666,6 +666,35 @@ class DatabaseService:
                 "SELECT id, job_title, recipient_email, sent_at, status FROM email_logs ORDER BY sent_at DESC"
             )
             return [EmailLog(**dict(row)) for row in rows]
+    
+    @staticmethod
+    async def get_existing_emails() -> set:
+        """Get all email addresses that have been contacted before"""
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT recipient_email FROM email_logs"
+            )
+            return {row['recipient_email'] for row in rows}
+    
+    @staticmethod
+    async def get_existing_emails_for_job(job_title: str) -> set:
+        """Get email addresses already contacted for a specific job title"""
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT recipient_email FROM email_logs WHERE job_title = $1",
+                job_title
+            )
+            return {row['recipient_email'] for row in rows}
+    
+    @staticmethod
+    async def get_recent_emails(days: int = 30) -> set:
+        """Get email addresses contacted within the last N days"""
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT recipient_email FROM email_logs WHERE sent_at >= NOW() - INTERVAL '%s days'",
+                days
+            )
+            return {row['recipient_email'] for row in rows}
 
 # API Endpoints
 
@@ -685,21 +714,46 @@ async def root():
 async def send_job_emails(request: JobRequest):
     """
     Main endpoint to scrape emails and send personalized job application emails
+    Enhanced with email deduplication to prevent sending to existing contacts
     """
     try:
         logger.info(f"Processing request for job: {request.job_title}, max emails: {request.max_emails}")
         
         # Step 1: Scrape emails
-        emails = await EmailScraper.scrape_job_emails(request)
+        scraped_emails = await EmailScraper.scrape_job_emails(request)
         
-        if not emails:
+        if not scraped_emails:
             raise HTTPException(status_code=404, detail="No recruiter emails found for this job criteria")
         
-        # Step 2: Send emails
+        # Step 2: Filter out emails that have already been contacted
+        existing_emails = await DatabaseService.get_existing_emails()
+        logger.info(f"Found {len(existing_emails)} emails in database to exclude")
+        
+        # Remove emails that have already been contacted
+        new_emails = [email for email in scraped_emails if email not in existing_emails]
+        skipped_count = len(scraped_emails) - len(new_emails)
+        
+        if skipped_count > 0:
+            logger.info(f"Skipping {skipped_count} emails that have already been contacted")
+        
+        if not new_emails:
+            return {
+                "message": "No new emails to send - all scraped emails have been contacted before",
+                "job_title": request.job_title,
+                "total_emails_scraped": len(scraped_emails),
+                "emails_skipped_duplicate": skipped_count,
+                "new_emails_found": 0,
+                "emails_sent": 0,
+                "emails_failed": 0,
+                "emails": []
+            }
+        
+        # Step 3: Send emails only to new contacts
         sent_count = 0
         failed_count = 0
+        sent_emails = []
         
-        for email in emails:
+        for email in new_emails:
             # Create personalized email content
             subject = f"Application for {request.job_title} Position"
             body = EmailService.create_personalized_email(request, email)
@@ -707,25 +761,30 @@ async def send_job_emails(request: JobRequest):
             # Send email
             success = await EmailService.send_email(email, subject, body)
             
-            # Log to database
+            # Log to database (both successful and failed attempts)
             status = "sent" if success else "failed"
             await DatabaseService.log_email(request.job_title, email, status)
             
             if success:
                 sent_count += 1
+                sent_emails.append(email)
+                logger.info(f"✅ Sent email to {email}")
             else:
                 failed_count += 1
+                logger.warning(f"❌ Failed to send email to {email}")
             
             # Add small delay to avoid rate limiting
             await asyncio.sleep(1)
         
         return {
-            "message": "Email sending process completed",
+            "message": "Email sending process completed with deduplication",
             "job_title": request.job_title,
-            "total_emails_found": len(emails),
+            "total_emails_scraped": len(scraped_emails),
+            "emails_skipped_duplicate": skipped_count,
+            "new_emails_found": len(new_emails),
             "emails_sent": sent_count,
             "emails_failed": failed_count,
-            "emails": emails
+            "emails": sent_emails
         }
         
     except Exception as e:
@@ -742,6 +801,61 @@ async def get_email_logs():
         return logs
     except Exception as e:
         logger.error(f"Error fetching email logs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/existing-emails")
+async def get_existing_emails():
+    """
+    Get all email addresses that have been contacted before
+    """
+    try:
+        existing_emails = await DatabaseService.get_existing_emails()
+        return {
+            "message": "Retrieved existing email addresses",
+            "total_existing_emails": len(existing_emails),
+            "existing_emails": sorted(list(existing_emails))
+        }
+    except Exception as e:
+        logger.error(f"Error fetching existing emails: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/existing-emails/{job_title}")
+async def get_existing_emails_for_job(job_title: str):
+    """
+    Get email addresses already contacted for a specific job title
+    """
+    try:
+        existing_emails = await DatabaseService.get_existing_emails_for_job(job_title)
+        return {
+            "message": f"Retrieved existing emails for job: {job_title}",
+            "job_title": job_title,
+            "total_existing_emails": len(existing_emails),
+            "existing_emails": sorted(list(existing_emails))
+        }
+    except Exception as e:
+        logger.error(f"Error fetching existing emails for job {job_title}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/recent-emails/{days}")
+async def get_recent_emails(days: int = 30):
+    """
+    Get email addresses contacted within the last N days
+    """
+    try:
+        if days < 1 or days > 365:
+            raise HTTPException(status_code=400, detail="Days must be between 1 and 365")
+        
+        recent_emails = await DatabaseService.get_recent_emails(days)
+        return {
+            "message": f"Retrieved emails contacted in the last {days} days",
+            "days": days,
+            "total_recent_emails": len(recent_emails),
+            "recent_emails": sorted(list(recent_emails))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching recent emails: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/health")
