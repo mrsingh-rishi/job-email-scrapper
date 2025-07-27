@@ -28,12 +28,12 @@ services:
     build: .
     container_name: job_outreach_app
     environment:
-      # Database configuration
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: password
-      DB_NAME: job_outreach
+      # Database configuration from environment variables
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-job_outreach}
       
       # Email configuration (replace with your credentials)
       SENDER_EMAIL: rs3949427@gmail.com
