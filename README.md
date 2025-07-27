@@ -85,14 +85,27 @@ docker-compose --profile tools up -d
 http://localhost:8000
 ```
 
-### 1. Send Job Application Emails
+### 1. Send Job Application Emails (Enhanced)
 ```http
 POST /send-emails
 Content-Type: application/json
 
 {
-    "job_title": "Software Engineer",
-    "max_emails": 5
+    "job_title": "Senior Backend Engineer",
+    "experience_level": "Senior",
+    "experience_years": "5-7 years",
+    "required_skills": ["Python", "Django", "PostgreSQL", "AWS"],
+    "preferred_skills": ["Docker", "Kubernetes", "Redis"],
+    "locations": ["San Francisco", "New York", "Remote"],
+    "remote_ok": true,
+    "company_types": ["Startup", "Mid-size"],
+    "target_companies": ["Stripe", "Shopify", "Airbnb"],
+    "industries": ["FinTech", "E-commerce"],
+    "domains": ["Backend", "API Development"],
+    "employment_type": "Full-time",
+    "salary_range": "$150k-$200k",
+    "max_emails": 50,
+    "urgency": "normal"
 }
 ```
 
@@ -100,16 +113,17 @@ Content-Type: application/json
 ```json
 {
     "message": "Email sending process completed",
-    "job_title": "Software Engineer",
-    "total_emails_found": 5,
-    "emails_sent": 5,
+    "job_title": "Senior Backend Engineer",
+    "total_emails_found": 50,
+    "emails_sent": 50,
     "emails_failed": 0,
     "emails": [
-        "recruiter.softwareengineer1@techcorp.com",
-        "hr.softwareengineer@startup.io",
-        "talent.acquisition@softwareengineer.com",
-        "hiring.manager@bigtech.com",
-        "recruiter@softwareengineer-jobs.com"
+        "recruiter@stripe.com",
+        "hr@shopify.com",
+        "talent@airbnb.com",
+        "hiring@financetech.com",
+        "careers@paymentcorp.io",
+        "recruiter.sanfrancisco@jobsearch.com"
     ]
 }
 ```

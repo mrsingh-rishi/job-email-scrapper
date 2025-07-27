@@ -72,8 +72,56 @@ app = FastAPI(
 
 # Pydantic models
 class JobRequest(BaseModel):
-    job_title: str = Field(..., description="Job title to search for")
-    max_emails: int = Field(default=10, ge=1, le=50, description="Maximum number of emails to send")
+    # Core job details
+    job_title: str = Field(..., description="Job title/role to search for", example="Software Engineer")
+    experience_level: Optional[str] = Field(None, description="Experience level (Entry/Mid/Senior/Lead/Principal)", example="Mid")
+    experience_years: Optional[str] = Field(None, description="Years of experience", example="3-5 years")
+    
+    # Skills and technologies
+    required_skills: Optional[List[str]] = Field(default=[], description="Required technical skills", example=["Python", "React", "AWS"])
+    preferred_skills: Optional[List[str]] = Field(default=[], description="Preferred additional skills", example=["Docker", "Kubernetes"])
+    
+    # Location preferences
+    locations: Optional[List[str]] = Field(default=[], description="Preferred job locations", example=["San Francisco", "New York", "Remote"])
+    remote_ok: bool = Field(default=True, description="Open to remote positions")
+    
+    # Company preferences
+    company_types: Optional[List[str]] = Field(default=[], description="Types of companies", example=["Startup", "MNC", "Mid-size"])
+    target_companies: Optional[List[str]] = Field(default=[], description="Specific companies to target", example=["Google", "Netflix", "OpenAI"])
+    company_size: Optional[str] = Field(None, description="Preferred company size", example="100-1000 employees")
+    
+    # Industry and domain
+    industries: Optional[List[str]] = Field(default=[], description="Target industries", example=["FinTech", "HealthTech", "AI/ML"])
+    domains: Optional[List[str]] = Field(default=[], description="Specific domains", example=["Backend", "Frontend", "DevOps"])
+    
+    # Job preferences
+    employment_type: Optional[str] = Field(None, description="Employment type", example="Full-time")
+    salary_range: Optional[str] = Field(None, description="Expected salary range", example="$120k-$180k")
+    
+    # Search parameters
+    max_emails: int = Field(default=25, ge=1, le=200, description="Maximum number of emails to send")
+    urgency: Optional[str] = Field("normal", description="Job search urgency", example="urgent")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "job_title": "Senior Backend Engineer",
+                "experience_level": "Senior",
+                "experience_years": "5-7 years",
+                "required_skills": ["Python", "Django", "PostgreSQL", "AWS"],
+                "preferred_skills": ["Docker", "Kubernetes", "Redis"],
+                "locations": ["San Francisco", "New York", "Remote"],
+                "remote_ok": True,
+                "company_types": ["Startup", "Mid-size"],
+                "target_companies": ["Stripe", "Shopify", "Airbnb"],
+                "industries": ["FinTech", "E-commerce"],
+                "domains": ["Backend", "API Development"],
+                "employment_type": "Full-time",
+                "salary_range": "$150k-$200k",
+                "max_emails": 50,
+                "urgency": "normal"
+            }
+        }
 
 class EmailLog(BaseModel):
     id: int
@@ -99,7 +147,7 @@ class Config:
 config = Config()
 
 class EmailScraper:
-    """Simulated email scraper (replace with actual scraping logic)"""
+    """Enhanced email scraper with comprehensive job parameter support"""
     
     @staticmethod
     async def extract_emails_from_text(text: str) -> List[str]:
@@ -109,51 +157,220 @@ class EmailScraper:
         return list(set(emails))  # Remove duplicates
     
     @staticmethod
-    async def scrape_job_emails(job_title: str, max_emails: int) -> List[str]:
-        """
-        Simulate scraping recruiter emails for a job title
-        In production, this would integrate with Google Search API or LinkedIn API
-        """
-        # Simulated recruiter emails for demonstration
-        simulated_emails = [
-            f"recruiter.{job_title.lower().replace(' ', '')}1@techcorp.com",
-            f"hr.{job_title.lower().replace(' ', '')}@startup.io",
-            f"talent.acquisition@{job_title.lower().replace(' ', '')}.com",
-            f"hiring.manager@bigtech.com",
-            f"recruiter@{job_title.lower().replace(' ', '')}-jobs.com",
-            f"careers@{job_title.lower().replace(' ', '')}.org",
-            f"jobs@{job_title.lower().replace(' ', '')}-company.net",
-            f"recruitment@{job_title.lower().replace(' ', '')}.co",
+    async def generate_company_emails(request: JobRequest) -> List[str]:
+        """Generate realistic company emails based on job requirements"""
+        emails = []
+        job_clean = request.job_title.lower().replace(' ', '').replace('-', '')
+        
+        # Base email patterns
+        base_patterns = [
+            "recruiter", "hr", "talent", "hiring", "careers", "jobs", 
+            "recruitment", "people", "human.resources", "talent.acquisition"
         ]
         
+        # Company domains based on company types
+        startup_domains = [
+            "techstartup.io", "innovate.ai", "nextstep.com", "disruption.tech",
+            "scalable.io", "fastgrow.co", "unicorn-startup.com", "venture.tech"
+        ]
+        
+        mnc_domains = [
+            "globaltech.com", "enterprise.corp", "worldwide.com", "international.biz",
+            "multinational.org", "fortune500.com", "bigcorp.net", "megacorp.com"
+        ]
+        
+        midsize_domains = [
+            "growthcompany.com", "midsizefirm.net", "established.biz", "mature-tech.com",
+            "solidfirm.co", "reliable-company.net", "steady-growth.com"
+        ]
+        
+        # Industry-specific domains
+        industry_domains = {
+            "FinTech": ["financetech.com", "paymentcorp.io", "bankingtech.net", "cryptofirm.co"],
+            "HealthTech": ["medtech.com", "healthinnovation.io", "biotech-corp.net", "digitalhealth.co"],
+            "AI/ML": ["aicompany.tech", "mlstartup.ai", "datatech.io", "deeplearning.co"],
+            "E-commerce": ["ecommtech.com", "retailtech.io", "marketplace.biz", "shopping-tech.net"],
+            "EdTech": ["edtech-startup.com", "learningtech.io", "education-corp.net"],
+            "Gaming": ["gamedev.studio", "gaming-corp.com", "entertainment.tech"],
+            "SaaS": ["saascompany.com", "cloudtech.io", "software-corp.net"]
+        }
+        
+        # Target company emails if specified
+        if request.target_companies:
+            for company in request.target_companies[:10]:  # Limit to 10 target companies
+                clean_company = company.lower().replace(' ', '').replace(',', '')
+                for pattern in base_patterns[:3]:  # Use top 3 patterns
+                    emails.append(f"{pattern}@{clean_company}.com")
+                    if len(emails) >= request.max_emails // 2:  # Half from target companies
+                        break
+        
+        # Generate emails based on company types
+        domains_to_use = []
+        if request.company_types:
+            for comp_type in request.company_types:
+                if comp_type.lower() in ["startup", "start-up"]:
+                    domains_to_use.extend(startup_domains)
+                elif comp_type.lower() in ["mnc", "multinational", "enterprise", "large"]:
+                    domains_to_use.extend(mnc_domains)
+                elif comp_type.lower() in ["mid-size", "midsize", "medium"]:
+                    domains_to_use.extend(midsize_domains)
+        else:
+            # If no company type specified, use all types
+            domains_to_use = startup_domains + mnc_domains + midsize_domains
+        
+        # Add industry-specific domains
+        if request.industries:
+            for industry in request.industries:
+                if industry in industry_domains:
+                    domains_to_use.extend(industry_domains[industry])
+        
+        # Generate emails with various patterns
+        email_count = 0
+        for domain in domains_to_use:
+            if email_count >= request.max_emails:
+                break
+            
+            for pattern in base_patterns:
+                if email_count >= request.max_emails:
+                    break
+                
+                # Various email formats
+                email_formats = [
+                    f"{pattern}@{domain}",
+                    f"{pattern}.{job_clean}@{domain}",
+                    f"{job_clean}.{pattern}@{domain}",
+                    f"{pattern}-{job_clean}@{domain}"
+                ]
+                
+                for email_format in email_formats:
+                    if email_count >= request.max_emails:
+                        break
+                    emails.append(email_format)
+                    email_count += 1
+        
+        # Add location-based emails if specified
+        if request.locations:
+            for location in request.locations[:5]:  # Limit to 5 locations
+                if email_count >= request.max_emails:
+                    break
+                clean_location = location.lower().replace(' ', '').replace(',', '')
+                for pattern in ["recruiter", "hr", "jobs"]:
+                    emails.append(f"{pattern}.{clean_location}@jobsearch.com")
+                    email_count += 1
+                    if email_count >= request.max_emails:
+                        break
+        
+        # Remove duplicates and return requested number
+        unique_emails = list(set(emails))
+        return unique_emails[:request.max_emails]
+    
+    @staticmethod
+    async def scrape_job_emails(request: JobRequest) -> List[str]:
+        """
+        Enhanced scraping based on comprehensive job requirements
+        In production, this would integrate with multiple APIs and scraping sources
+        """
+        logger.info(f"Enhanced scraping for: {request.job_title}")
+        logger.info(f"Experience: {request.experience_level} ({request.experience_years})")
+        logger.info(f"Skills: {', '.join(request.required_skills + request.preferred_skills)}")
+        logger.info(f"Locations: {', '.join(request.locations)}")
+        logger.info(f"Company types: {', '.join(request.company_types)}")
+        logger.info(f"Industries: {', '.join(request.industries)}")
+        
+        # Generate comprehensive email list
+        emails = await EmailScraper.generate_company_emails(request)
+        
         # In a real implementation, you would:
-        # 1. Use Google Custom Search API or web scraping
-        # 2. Search for job postings related to the job title
-        # 3. Extract contact emails from job postings
-        # 4. Use LinkedIn API (if available) to find recruiter profiles
+        # 1. Use Google Custom Search API with job-specific queries
+        # 2. Search LinkedIn Sales Navigator API
+        # 3. Use job board APIs (Indeed, Glassdoor, LinkedIn Jobs)
+        # 4. Scrape company career pages
+        # 5. Use AngelList API for startups
+        # 6. Query Crunchbase for company information
+        # 7. Use ZoomInfo or Apollo.io for contact discovery
         
-        logger.info(f"Simulated scraping for job title: {job_title}")
-        
-        # Return limited number of emails
-        return simulated_emails[:max_emails]
+        logger.info(f"Generated {len(emails)} emails for job search criteria")
+        return emails
 
 class EmailService:
     """Service for sending personalized emails"""
     
     @staticmethod
-    def create_personalized_email(job_title: str, recipient_email: str) -> str:
-        """Create personalized email content"""
+    def create_personalized_email(request: JobRequest, recipient_email: str) -> str:
+        """Create highly personalized email content based on job requirements"""
+        
+        # Build skills section
+        skills_text = ""
+        if request.required_skills:
+            skills_text += f"• Proficient in: {', '.join(request.required_skills)}\n"
+        if request.preferred_skills:
+            skills_text += f"• Additional experience with: {', '.join(request.preferred_skills)}\n"
+        
+        # Build experience section
+        experience_text = ""
+        if request.experience_level and request.experience_years:
+            experience_text = f"As a {request.experience_level.lower()}-level professional with {request.experience_years} of experience, "
+        elif request.experience_level:
+            experience_text = f"As a {request.experience_level.lower()}-level professional, "
+        elif request.experience_years:
+            experience_text = f"With {request.experience_years} of experience, "
+        else:
+            experience_text = "As a dedicated software professional, "
+        
+        # Build location section
+        location_text = ""
+        if request.locations:
+            if request.remote_ok:
+                location_text = f"I am open to opportunities in {', '.join(request.locations)} as well as remote positions."
+            else:
+                location_text = f"I am specifically interested in opportunities in {', '.join(request.locations)}."
+        elif request.remote_ok:
+            location_text = "I am open to both on-site and remote opportunities."
+        
+        # Build company type preference
+        company_text = ""
+        if request.company_types:
+            company_text = f"I am particularly interested in {', '.join(request.company_types).lower()} companies."
+        
+        # Build industry interest
+        industry_text = ""
+        if request.industries:
+            industry_text = f"I am passionate about working in the {', '.join(request.industries)} space."
+        
+        # Build domain expertise
+        domain_text = ""
+        if request.domains:
+            domain_text = f"My expertise spans {', '.join(request.domains).lower()} development."
+        
+        # Build salary expectation (if provided)
+        salary_text = ""
+        if request.salary_range:
+            salary_text = f"My salary expectation is in the range of {request.salary_range}."
+        
+        # Build urgency indicator
+        urgency_text = ""
+        if request.urgency and request.urgency.lower() == "urgent":
+            urgency_text = "I am actively seeking new opportunities and available for immediate start."
+        
+        # Create personalized email
         email_template = f"""
 Dear Hiring Manager,
 
-I hope this email finds you well. I am writing to express my strong interest in the {job_title} position at your organization.
+I hope this email finds you well. I am writing to express my strong interest in the {request.job_title} position at your organization.
 
-As a passionate software engineer with experience in full-stack development, I am excited about the opportunity to contribute to your team. My background includes:
+{experience_text}I am excited about the opportunity to contribute to your team. My background includes:
 
-• Full-stack web development with modern frameworks
-• Experience with Python, JavaScript, and various databases
-• Strong problem-solving skills and ability to work in agile environments
+{skills_text}• Strong problem-solving skills and ability to work in agile environments
 • Passion for creating efficient, scalable solutions
+{domain_text}
+
+{industry_text} {company_text}
+
+{location_text}
+
+{urgency_text}
+
+{salary_text}
 
 I have attached my resume for your review and would welcome the opportunity to discuss how my skills and enthusiasm can contribute to your team's success.
 
@@ -168,7 +385,15 @@ Best regards,
 {config.SENDER_NAME}
 {config.SENDER_EMAIL}
         """
-        return email_template.strip()
+        
+        # Clean up extra whitespace and empty lines
+        lines = [line.strip() for line in email_template.split('\n')]
+        cleaned_lines = []
+        for line in lines:
+            if line or (cleaned_lines and cleaned_lines[-1]):  # Keep non-empty lines and single empty lines
+                cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines).strip()
     
     @staticmethod
     async def send_email(recipient_email: str, subject: str, body: str) -> bool:
@@ -244,10 +469,10 @@ async def send_job_emails(request: JobRequest):
         logger.info(f"Processing request for job: {request.job_title}, max emails: {request.max_emails}")
         
         # Step 1: Scrape emails
-        emails = await EmailScraper.scrape_job_emails(request.job_title, request.max_emails)
+        emails = await EmailScraper.scrape_job_emails(request)
         
         if not emails:
-            raise HTTPException(status_code=404, detail="No recruiter emails found for this job title")
+            raise HTTPException(status_code=404, detail="No recruiter emails found for this job criteria")
         
         # Step 2: Send emails
         sent_count = 0
@@ -256,7 +481,7 @@ async def send_job_emails(request: JobRequest):
         for email in emails:
             # Create personalized email content
             subject = f"Application for {request.job_title} Position"
-            body = EmailService.create_personalized_email(request.job_title, email)
+            body = EmailService.create_personalized_email(request, email)
             
             # Send email
             success = await EmailService.send_email(email, subject, body)
