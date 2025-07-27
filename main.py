@@ -281,8 +281,8 @@ class EmailScraper:
         all_emails = set()
         
         # 1. Generate company-based emails (existing functionality)
-        company_emails = await EmailScraper.generate_company_emails(request)
-        all_emails.update(company_emails)
+        # company_emails = await EmailScraper.generate_company_emails(request)
+        # all_emails.update(company_emails)
         
         # 2. Real-world implementations (can be enabled with API keys)
         try:
@@ -292,30 +292,30 @@ class EmailScraper:
             all_emails.update(google_emails)
             
             # LinkedIn job scraping (simulated)
-            linkedin_emails = await EmailScraper.scrape_linkedin_jobs(request)
-            logger.info(f"Scraped {len(linkedin_emails)} emails from LinkedIn")
-            all_emails.update(linkedin_emails)
+            # linkedin_emails = await EmailScraper.scrape_linkedin_jobs(request)
+            # logger.info(f"Scraped {len(linkedin_emails)} emails from LinkedIn")
+            # all_emails.update(linkedin_emails)
             
-            # Job board APIs
-            job_board_emails = await EmailScraper.scrape_job_boards(request)
-            logger.info(f"Scraped {len(job_board_emails)} emails from job boards")
-            all_emails.update(job_board_emails)
+            # # Job board APIs
+            # job_board_emails = await EmailScraper.scrape_job_boards(request)
+            # logger.info(f"Scraped {len(job_board_emails)} emails from job boards")
+            # all_emails.update(job_board_emails)
             
-            # Company career pages
-            career_page_emails = await EmailScraper.scrape_career_pages(request)
-            logger.info(f"Scraped {len(career_page_emails)} emails from company career pages")
-            all_emails.update(career_page_emails)
+            # # Company career pages
+            # career_page_emails = await EmailScraper.scrape_career_pages(request)
+            # logger.info(f"Scraped {len(career_page_emails)} emails from company career pages")
+            # all_emails.update(career_page_emails)
             
-            # Startup databases
-            startup_emails = await EmailScraper.scrape_startup_databases(request)
-            logger.info(f"Scraped {len(startup_emails)} emails from startup databases")
-            all_emails.update(startup_emails)
+            # # Startup databases
+            # startup_emails = await EmailScraper.scrape_startup_databases(request)
+            # logger.info(f"Scraped {len(startup_emails)} emails from startup databases")
+            # all_emails.update(startup_emails)
             
         except Exception as e:
             logger.warning(f"Some scraping sources failed: {str(e)}")
         
         # Convert to list and limit results
-        final_emails = list(all_emails)[:request.max_emails]
+        final_emails = list(all_emails)
         
         logger.info(f"Generated {len(final_emails)} emails from multiple sources")
         return final_emails
@@ -339,7 +339,26 @@ class EmailScraper:
             search_queries = [
                 f'"{request.job_title}" recruiter email contact',
                 f'"{request.job_title}" hiring manager email',
-                f'"{request.job_title}" HR contact email'
+                f'"{request.job_title}" HR contact email',
+                f'"{request.job_title}" talent acquisition email',
+                f'"{request.job_title}" recruitment email',
+                f'"{request.job_title}" jobs email contact',
+                f'"{request.job_title}" careers email contact',
+                f'"{request.job_title}" company email contact',
+                f'"{request.job_title}" {request.company_types[0] if request.company_types else "company"} email contact',
+                f'"{request.job_title}" {request.industries[0] if request.industries else "industry"} email contact',
+                f'"{request.job_title}" {request.domains[0] if request.domains else "domain"} email contact',
+                f'"{request.job_title}" recruiter contact email',
+                f'"{request.job_title}" hiring contact email',
+                f'"{request.job_title}" HR email contact',
+                f'"{request.job_title}" talent email contact',
+                f'"{request.job_title}" recruitment contact email',
+                f'"{request.job_title}" jobs contact email',
+                f'"{request.job_title}" careers contact email',
+                f'"{request.job_title}" company contact email',
+                f'"{request.job_title}" {request.company_types[0] if request.company_types else "company"} contact email',
+                f'"{request.job_title}" {request.industries[0] if request.industries else "industry"} contact email',
+                f'"{request.job_title}" {request.domains[0] if request.domains else "domain"} contact email',
             ]
             
             # Add location-specific searches
