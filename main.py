@@ -20,6 +20,9 @@ import aiohttp
 from bs4 import BeautifulSoup
 import logging
 from contextlib import asynccontextmanager
+import random
+from urllib.parse import urlparse
+from typing import Set
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -323,82 +326,361 @@ class EmailScraper:
     @staticmethod
     async def scrape_google_search(request: JobRequest) -> List[str]:
         """
-        Scrape emails using Google Custom Search API
-        Requires GOOGLE_API_KEY and SEARCH_ENGINE_ID environment variables
+        Enhanced email scraping using Google Custom Search API with extensive search strategies
+        Scrapes vast data and gets maximum number of emails from Google search
         """
-        emails = []
+        
+        logger = logging.getLogger(__name__)
+        
+        # Email regex pattern
+        email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+        
+        # Extract and validate emails from text
+        def extract_emails_from_text(text: str) -> Set[str]:
+            if not text:
+                return set()
+            
+            raw_emails = email_pattern.findall(text)
+            valid_emails = set()
+            
+            for email in raw_emails:
+                email = email.lower().strip()
+                
+                # Skip common false positives
+                if any(skip in email for skip in [
+                    'example.com', 'test.com', 'domain.com', 'email.com',
+                    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+                    'admin@', 'webmaster@', 'postmaster@', 'abuse@',
+                    '.png', '.jpg', '.jpeg', '.gif', '.pdf', '.doc'
+                ]):
+                    continue
+                
+                # Basic validation
+                if len(email) > 5 and len(email) < 100 and email.count('@') == 1:
+                    valid_emails.add(email)
+            
+            return valid_emails
+        
+        # Scrape additional emails from web pages
+        async def scrape_page_content(session: aiohttp.ClientSession, url: str) -> Set[str]:
+            emails = set()
+            try:
+                if not url.startswith(('http://', 'https://')):
+                    return emails
+                
+                parsed = urlparse(url)
+                if parsed.netloc in ['facebook.com', 'twitter.com', 'instagram.com', 'tiktok.com']:
+                    return emails
+                
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status == 200 and 'text/html' in response.headers.get('content-type', ''):
+                        content = await response.text()
+                        found_emails = extract_emails_from_text(content)
+                        emails.update(found_emails)
+                        
+            except Exception as e:
+                logger.debug(f"Failed to scrape page {url}: {str(e)}")
+            
+            return emails
+        
+        # Perform search and extract emails
+        async def search_and_extract(session: aiohttp.ClientSession, api_key: str, 
+                                search_engine_id: str, query: str) -> Set[str]:
+            emails = set()
+            
+            try:
+                url = "https://www.googleapis.com/customsearch/v1"
+                params = {
+                    'key': api_key,
+                    'cx': search_engine_id,
+                    'q': query,
+                    'num': 10,
+                    'start': 1
+                }
+                
+                # Try multiple pages of results
+                for start_index in [1, 11, 21]:  # Get first 3 pages
+                    params['start'] = start_index
+                    
+                    async with session.get(url, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            
+                            for item in data.get('items', []):
+                                snippet = item.get('snippet', '')
+                                title = item.get('title', '')
+                                link = item.get('link', '')
+                                
+                                # Extract emails from text
+                                text_content = f"{snippet} {title} {link}"
+                                found_emails = extract_emails_from_text(text_content)
+                                emails.update(found_emails)
+                                
+                                # Try to fetch additional content from promising links
+                                if any(keyword in link.lower() for keyword in ['career', 'job', 'contact', 'about', 'team']):
+                                    additional_emails = await scrape_page_content(session, link)
+                                    emails.update(additional_emails)
+                        
+                        elif response.status == 429:
+                            logger.warning("Rate limit hit, backing off")
+                            await asyncio.sleep(random.uniform(3, 6))
+                            break
+                        
+                        # Small delay between page requests
+                        await asyncio.sleep(0.3)
+                        
+            except Exception as e:
+                logger.error(f"Search query failed for '{query}': {str(e)}")
+            
+            return emails
+        
+        # Main execution starts here
+        all_emails = set()
         google_api_key = os.getenv('GOOGLE_API_KEY')
         search_engine_id = os.getenv('GOOGLE_SEARCH_ENGINE_ID')
         
         if not google_api_key or not search_engine_id:
             logger.info("Google API credentials not found, skipping Google search")
-            return emails
+            return []
         
         try:
-            # Build search queries
-            search_queries = [
-                f'"{request.job_title}" recruiter email contact',
-                f'"{request.job_title}" hiring manager email',
-                f'"{request.job_title}" HR contact email',
-                f'"{request.job_title}" talent acquisition email',
-                f'"{request.job_title}" recruitment email',
-                f'"{request.job_title}" jobs email contact',
-                f'"{request.job_title}" careers email contact',
-                f'"{request.job_title}" company email contact',
-                f'"{request.job_title}" {request.company_types[0] if request.company_types else "company"} email contact',
-                f'"{request.job_title}" {request.industries[0] if request.industries else "industry"} email contact',
-                f'"{request.job_title}" {request.domains[0] if request.domains else "domain"} email contact',
-                f'"{request.job_title}" recruiter contact email',
-                f'"{request.job_title}" hiring contact email',
-                f'"{request.job_title}" HR email contact',
-                f'"{request.job_title}" talent email contact',
-                f'"{request.job_title}" recruitment contact email',
-                f'"{request.job_title}" jobs contact email',
-                f'"{request.job_title}" careers contact email',
-                f'"{request.job_title}" company contact email',
-                f'"{request.job_title}" {request.company_types[0] if request.company_types else "company"} contact email',
-                f'"{request.job_title}" {request.industries[0] if request.industries else "industry"} contact email',
-                f'"{request.job_title}" {request.domains[0] if request.domains else "domain"} contact email',
+            job_title = request.job_title
+            
+            # Generate comprehensive search queries
+            search_queries = []
+            
+            # Base query patterns
+            base_patterns = [
+                # Direct email searches
+                f'"{job_title}" recruiter email contact',
+                f'"{job_title}" hiring manager email',
+                f'"{job_title}" HR email contact',
+                f'"{job_title}" talent acquisition email',
+                f'"{job_title}" recruitment consultant email',
+                f'"{job_title}" headhunter email',
+                f'"{job_title}" staffing email contact',
+                f'"{job_title}" careers email',
+                f'"{job_title}" jobs email',
+                f'"{job_title}" recruiting email',
+                f'"{job_title}" talent email',
+                f'"{job_title}" hiring email',
+                
+                # Contact page searches
+                f'"{job_title}" contact us email',
+                f'"{job_title}" get in touch email',
+                f'"{job_title}" reach out email',
+                f'"{job_title}" connect email',
+                f'"{job_title}" contact information',
+                f'"{job_title}" contact details',
+                
+                # LinkedIn-style searches
+                f'"{job_title}" linkedin recruiter email',
+                f'"{job_title}" linkedin hiring manager',
+                f'"{job_title}" linkedin talent acquisition',
+                f'"{job_title}" linkedin recruiter contact',
+                
+                # Job board related
+                f'"{job_title}" indeed recruiter email',
+                f'"{job_title}" monster recruiter email',
+                f'"{job_title}" glassdoor recruiter email',
+                f'"{job_title}" ziprecruiter email',
+                f'"{job_title}" dice recruiter email',
+                f'"{job_title}" careerbuilder email',
+                
+                # Company-specific patterns
+                f'"{job_title}" company recruiter email',
+                f'"{job_title}" corporate recruiter email',
+                f'"{job_title}" internal recruiter email',
+                f'"{job_title}" enterprise recruiter email',
+                f'"{job_title}" startup recruiter email',
+                
+                # Alternative search patterns
+                f'recruiter "{job_title}" email contact',
+                f'hiring manager "{job_title}" email',
+                f'HR "{job_title}" contact email',
+                f'talent acquisition "{job_title}" email',
+                f'recruitment "{job_title}" contact',
             ]
             
-            # Add location-specific searches
-            for location in request.locations[:3]:
-                search_queries.append(f'"{request.job_title}" {location} recruiter email')
+            search_queries.extend(base_patterns)
             
-            # Add company-specific searches
-            for company in request.target_companies[:5]:
-                search_queries.append(f'{company} "{request.job_title}" recruiter email')
+            # Add location-specific searches (expanded)
+            for location in request.locations[:6]:
+                location_queries = [
+                    f'"{job_title}" {location} recruiter email',
+                    f'"{job_title}" {location} hiring manager',
+                    f'"{job_title}" {location} HR contact',
+                    f'"{job_title}" {location} talent acquisition',
+                    f'"{job_title}" {location} jobs email',
+                    f'"{job_title}" {location} careers email',
+                    f'{location} "{job_title}" recruiter contact',
+                    f'{location} "{job_title}" hiring email',
+                    f'{location} "{job_title}" talent email',
+                    f'{location} jobs "{job_title}" email',
+                ]
+                search_queries.extend(location_queries)
             
-            async with aiohttp.ClientSession() as session:
-                for query in search_queries[:10]:  # Limit to 10 queries
-                    url = f"https://www.googleapis.com/customsearch/v1"
-                    params = {
-                        'key': google_api_key,
-                        'cx': search_engine_id,
-                        'q': query,
-                        'num': 5
-                    }
+            # Add company-specific searches (expanded)
+            for company in request.target_companies[:10]:
+                company_queries = [
+                    f'{company} "{job_title}" recruiter email',
+                    f'{company} "{job_title}" hiring manager',
+                    f'{company} "{job_title}" HR contact',
+                    f'{company} "{job_title}" careers email',
+                    f'{company} "{job_title}" talent acquisition',
+                    f'{company} careers "{job_title}" contact',
+                    f'{company} jobs "{job_title}" email',
+                    f'{company} "{job_title}" recruitment',
+                    f'{company} "{job_title}" hiring contact',
+                    f'site:{company.lower().replace(" ", "")}.com "{job_title}" email',
+                ]
+                search_queries.extend(company_queries)
+            
+            # Add industry-specific searches
+            for industry in request.industries[:6]:
+                industry_queries = [
+                    f'"{job_title}" {industry} recruiter email',
+                    f'"{job_title}" {industry} hiring manager',
+                    f'"{job_title}" {industry} talent acquisition',
+                    f'"{job_title}" {industry} HR contact',
+                    f'{industry} "{job_title}" recruiter contact',
+                    f'{industry} "{job_title}" hiring email',
+                    f'{industry} "{job_title}" talent email',
+                    f'{industry} companies "{job_title}" recruiter',
+                ]
+                search_queries.extend(industry_queries)
+            
+            # Add domain-specific searches
+            for domain in request.domains[:6]:
+                domain_queries = [
+                    f'"{job_title}" {domain} recruiter email',
+                    f'"{job_title}" {domain} hiring contact',
+                    f'"{job_title}" {domain} talent email',
+                    f'{domain} "{job_title}" recruiter',
+                    f'{domain} "{job_title}" hiring manager',
+                ]
+                search_queries.extend(domain_queries)
+            
+            # Add email domain searches
+            email_domains = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'icloud.com']
+            for domain in email_domains:
+                search_queries.extend([
+                    f'"{job_title}" recruiter @{domain}',
+                    f'"{job_title}" hiring manager @{domain}',
+                    f'"{job_title}" talent acquisition @{domain}',
+                ])
+            
+            # Add specific recruiter company searches
+            recruiter_companies = ['manpowergroup', 'randstad', 'adecco', 'kelly', 'robert half', 'hays']
+            for company in recruiter_companies:
+                search_queries.extend([
+                    f'{company} "{job_title}" recruiter email',
+                    f'{company} "{job_title}" consultant email',
+                ])
+            
+            # Shuffle queries to distribute load
+            random.shuffle(search_queries)
+            
+            # Limit total queries but make it substantial
+            search_queries = search_queries[:80]  # Increased significantly
+            
+            # Process queries in batches to handle rate limits
+            batch_size = 8
+            query_batches = [search_queries[i:i + batch_size] for i in range(0, len(search_queries), batch_size)]
+            
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=45),
+                connector=aiohttp.TCPConnector(limit=15)
+            ) as session:
+                
+                for batch_idx, batch in enumerate(query_batches):
+                    logger.info(f"Processing batch {batch_idx + 1}/{len(query_batches)} with {len(batch)} queries")
                     
-                    async with session.get(url, params=params) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            for item in data.get('items', []):
-                                snippet = item.get('snippet', '')
-                                title = item.get('title', '')
-                                
-                                # Extract emails from snippets and titles
-                                found_emails = await EmailScraper.extract_emails_from_text(snippet + ' ' + title)
-                                emails.extend(found_emails)
+                    # Process batch queries concurrently
+                    tasks = []
+                    for query in batch:
+                        task = search_and_extract(session, google_api_key, search_engine_id, query)
+                        tasks.append(task)
                     
-                    # Rate limiting
-                    await asyncio.sleep(0.1)
+                    # Execute batch with concurrency control
+                    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
                     
+                    # Collect emails from batch results
+                    for result in batch_results:
+                        if isinstance(result, set):
+                            all_emails.update(result)
+                        elif isinstance(result, Exception):
+                            logger.warning(f"Query failed: {str(result)}")
+                    
+                    # Rate limiting between batches
+                    if batch_idx < len(query_batches) - 1:
+                        await asyncio.sleep(random.uniform(1.0, 2.0))
+                
+                # Perform deep search based on found emails
+                if len(all_emails) > 0:
+                    logger.info("Performing deep search based on found email domains...")
+                    
+                    # Extract domains from found emails
+                    domains = set()
+                    for email in list(all_emails)[:15]:  # Use first 15 emails
+                        if '@' in email:
+                            domain = email.split('@')[1]
+                            domains.add(domain)
+                    
+                    # Search for more emails from these domains
+                    deep_search_queries = []
+                    for domain in list(domains)[:8]:
+                        deep_queries = [
+                            f'"{job_title}" site:{domain} contact',
+                            f'"{job_title}" site:{domain} email',
+                            f'"{job_title}" site:{domain} careers',
+                            f'"{job_title}" site:{domain} jobs',
+                            f'recruiter site:{domain} "{job_title}"',
+                            f'hiring manager site:{domain} "{job_title}"',
+                            f'talent acquisition site:{domain}',
+                        ]
+                        deep_search_queries.extend(deep_queries)
+                    
+                    # Execute deep search queries
+                    for query in deep_search_queries[:20]:  # Limit deep search
+                        try:
+                            deep_emails = await search_and_extract(session, google_api_key, search_engine_id, query)
+                            all_emails.update(deep_emails)
+                            await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.error(f"Deep search query failed: {str(e)}")
+                
+                # Additional targeted searches for high-value keywords
+                if len(all_emails) < 50:  # If we don't have enough emails, try more targeted searches
+                    logger.info("Performing additional targeted searches...")
+                    
+                    targeted_queries = [
+                        f'"{job_title}" "email me" OR "contact me" OR "reach me"',
+                        f'"{job_title}" "send resume" OR "apply now" email',
+                        f'"{job_title}" "hiring now" email contact',
+                        f'"{job_title}" "we are hiring" email',
+                        f'"{job_title}" "join our team" email',
+                        f'"{job_title}" "job opening" email contact',
+                        f'"{job_title}" "position available" email',
+                        f'"{job_title}" "career opportunity" email',
+                    ]
+                    
+                    for query in targeted_queries:
+                        try:
+                            targeted_emails = await search_and_extract(session, google_api_key, search_engine_id, query)
+                            all_emails.update(targeted_emails)
+                            await asyncio.sleep(0.8)
+                        except Exception as e:
+                            logger.error(f"Targeted search query failed: {str(e)}")
+                            
         except Exception as e:
             logger.error(f"Google search scraping failed: {str(e)}")
 
-        logger.info(f"Scraped {len(emails)} emails from Google search")
-        logger.info(f"Generated {len(emails)} emails from Google search")
-        return list(set(emails))  # Return unique emails
+        unique_emails = list(all_emails)
+        logger.info(f"Successfully scraped {len(unique_emails)} unique emails from Google search")
+        logger.info(f"Generated {len(unique_emails)} emails from Google search")
+        
+        return unique_emails
 
     @staticmethod
     async def scrape_linkedin_jobs(request: JobRequest) -> List[str]:
